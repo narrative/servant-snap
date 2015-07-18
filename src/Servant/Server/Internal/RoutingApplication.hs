@@ -35,6 +35,7 @@ import           Servant.API                         ((:<|>) (..))
 import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core
+import           Servant.Server.Internal.SnapShims
 import           Snap.Internal.Http.Types
 import           Snap.Internal.Iteratee.Debug        (iterateeDebugWrapper)
 import qualified Snap.Iteratee                       as I
@@ -44,7 +45,7 @@ import Debug.Trace
 
 type RoutingApplication =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
-  -> (RouteResult Response -> IO Response) -> IO Response
+  -> (RouteResult Response -> RouteM Response) -> RouteM Response
 
 
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
@@ -83,18 +84,17 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: RoutingApplication
-              -> Request
-              -> (Response -> IO Response)
-              -> IO Response
+toApplication :: MonadSnap m
+              => RoutingApplication
+              -> Application m
 toApplication ra request respond = do
-  liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
-  r <- liftIO $ ra request (routingRespond . traceShow' . routeResult)
-  putStrLn $ "toApp response: " <> show r
+  --liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
+  r <- liftSnap $ ra request (routingRespond . traceShow' . routeResult)
+  --liftIO $ putStrLn $ "toApp response: " <> show r
   return r
 
    where
-     routingRespond :: Either RouteMismatch Response -> IO Response
+     routingRespond :: MonadSnap m => Either RouteMismatch Response -> m Response
      routingRespond (Left NotFound) =
        respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
      routingRespond (Left WrongMethod) =

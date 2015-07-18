@@ -14,7 +14,9 @@ import           Debug.Trace
 
 traceShow' a = traceShow a a
 
-type Application = Request -> (Response -> IO Response) -> IO Response
+type RouteM = Snap
+
+type Application m = Request -> (Response -> m Response) -> m Response
 
 
 snapToApplication :: Snap () -> Request -> (Response -> IO Response) -> IO Response
