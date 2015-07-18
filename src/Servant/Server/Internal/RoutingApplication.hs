@@ -42,9 +42,9 @@ import Snap.Internal.Iteratee.Debug as ID
 
 import Debug.Trace
 
-type RoutingApplication =
+type RoutingApplication m =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
-  -> (RouteResult Response -> IO Response) -> IO Response
+  -> (RouteResult Response -> m Response) -> m Response
 
 
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
@@ -83,18 +83,18 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: RoutingApplication
+toApplication :: (MonadSnap m) => RoutingApplication m
               -> Request
-              -> (Response -> IO Response)
-              -> IO Response
+              -> (Response -> m Response)
+              -> m Response
 toApplication ra request respond = do
   liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
-  r <- liftIO $ ra request (routingRespond . traceShow' . routeResult)
-  putStrLn $ "toApp response: " <> show r
+  r <- ra request (routingRespond . traceShow' . routeResult)
+  liftIO $ putStrLn $ "toApp response: " <> show r
   return r
 
    where
-     routingRespond :: Either RouteMismatch Response -> IO Response
+     --routingRespond :: Either RouteMismatch Response -> IO Response
      routingRespond (Left NotFound) =
        respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
      routingRespond (Left WrongMethod) =
@@ -116,10 +116,10 @@ responseLBS (Status code msg) hs body =
     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
     $ emptyResponse
 
-runAction :: IO (RouteResult (EitherT ServantErr IO a))
-          -> (RouteResult Response -> IO r)
+runAction :: MonadSnap m => m (RouteResult (EitherT ServantErr m a))
+          -> (RouteResult Response -> m r)
           -> (a -> RouteResult Response)
-          -> IO r
+          -> m r
 runAction action respond k = do
   r <- action
   go r
@@ -131,7 +131,7 @@ runAction action respond k = do
         Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
-feedTo :: IO (RouteResult (a -> b)) -> a -> IO (RouteResult b)
+feedTo :: MonadSnap m => m (RouteResult (a -> b)) -> a -> m (RouteResult b)
 feedTo f x = (($ x) <$>) <$> f
 
 extractL :: RouteResult (a :<|> b) -> RouteResult a

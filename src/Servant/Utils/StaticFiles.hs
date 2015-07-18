@@ -4,7 +4,7 @@
 -- - 'serveDirectory' lets you serve anything that lives under a particular
 --   directory on your filesystem.
 module Servant.Utils.StaticFiles (
-  serveDirectory,
+--  serveDirectory,
  ) where
 
 import           System.FilePath                   (addTrailingPathSeparator)
@@ -13,7 +13,7 @@ import           Filesystem.Path.CurrentOS         (decodeString)
 import           Servant.API.Raw                   (Raw)
 import           Servant.Server                    (Server)
 import           Servant.Server.Internal.SnapShims
-import           Snap.Core                         (liftSnap)
+import           Snap.Core                         (MonadSnap(..), liftSnap)
 import qualified Snap.Util.FileServe               as Snap
 
 -- | Serve anything under the specified directory as a 'Raw' endpoint.
@@ -36,7 +36,8 @@ import qualified Snap.Util.FileServe               as Snap
 -- behind a /\/static\// prefix. In that case, remember to put the 'serveDirectory'
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
-serveDirectory :: FilePath -> Server Raw
-serveDirectory fp req handler =
-  (snapToApplication (Snap.serveDirectory fp) req handler)
+--serveDirectory :: MonadSnap m => FilePath -> Server Raw m
+--serveDirectory fp req = Snap.serveDirectory
+--serveDirectory fp req handler = undefined -- TODO
+  -- (snapToApplication (Snap.serveDirectory fp) req handler)
     --staticApp . defaultFileServerSettings . addTrailingPathSeparator

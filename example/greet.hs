@@ -19,6 +19,10 @@ import           Snap.Http.Server
 import           Servant
 
 import           Debug.Trace
+
+import Heist
+import Snap.Snaplet.Heist
+import Snap.Snaplet
 -- * Example
 
 -- | A greet message data type
@@ -42,8 +46,15 @@ type TestApi =
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
   -- :<|> Get '[JSON] Greet
 
+  :<|> "justreq" :> Get '[JSON] ()
+
 testApi :: Proxy TestApi
 testApi = Proxy
+
+data App = App { _heist :: Snaplet (Heist App)}
+
+instance HasHeist App where
+  heistLens = subSnaplet heist
 
 -- Server-side handlers.
 --
@@ -51,8 +62,8 @@ testApi = Proxy
 -- that represents the API, are glued together using :<|>.
 --
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
-server :: Server TestApi
-server = helloH :<|> postGreetH :<|> deleteGreetH -- :<|> nodeal
+server :: MonadSnap m => Server TestApi m
+server = helloH :<|> postGreetH :<|> deleteGreetH  :<|> justReq
 
   where helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
@@ -63,12 +74,13 @@ server = helloH :<|> postGreetH :<|> deleteGreetH -- :<|> nodeal
 
         deleteGreetH _ = return ()
         -- nodeal = return $ Greet "NoDeal"
-        justReq = snapToApplication $ writeBS "Hello"
+        justReq :: Handler App App Greet
+        justReq = return ()
         --justReq = cs $ mconcat (pathInfo req)
 
 -- Turn the server into a WAI app. 'serve' is provided by servant,
 -- more precisely by the Servant.Server module.
-test :: Application
+test :: MonadSnap m => Application m
 test = traceShow "TESTING" $ serve testApi server
 
 -- Run the server.

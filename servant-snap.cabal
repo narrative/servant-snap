@@ -84,6 +84,8 @@ executable greet
     , servant
     , servant-snap
     , aeson
+    , snap
+    , heist
     , snap-core
     , snap-server
     , text
