@@ -112,7 +112,7 @@ serve
   :: (HasServer layout)
   => Proxy layout
   -> Server layout
-  -> (Request -> (Response -> IO Response) -> IO Response)
+  -> (Request -> (Response -> Snap Response) -> Snap Response)
 serve p server = toApplication (runRouter (route p (return (RR (Right server)))))
 
 
