@@ -31,3 +31,25 @@
 
 I believe I need a function `snapServeApplication :: (Request -> (Respsonse -> IO Response) -> IO Response) -> Snap Response`
 This is proving to be a pain to write. The arguments to the `Application` function aren't easy to get at. I need to lift the callback in the second argument into the Snap monad.
+
+# Long convo with Alp and Anders
+
+Discovered one of the main goals of Servant's design: make all a handler's dependencies explicit in the types. Makes a lot of sense in retrospect, but hadn't realized this, or the implications for handling in Snap's Handler monad, until now. Oops!
+
+We want to forbid looking up info from the request in the handler. All that looking up must be done in servant's internals. Enforce if possible.
+
+Another goal - have greet.hs compile without changing the handlers or their type signatures (so handling is done in Servant's Server monad).
+
+We might continue to use MonadSnap m in the routing, but MonadSnaplet m in the interface. Or our own MonadServantSnaplet which denies access to the underlying MonadSnap monad, so that users can't get at raw request info. Created the branch `monadsnaplet` for trying to get some of this working.
+
+# Can we convert `Handler b b a]` to `EitherT ServantErr IO a`?
+
+I don't think so. Even to `runSnaplet` on the handler, we need access to its initializer. This seems wrong...
+
+# Replace `EitherT ServantErr IO a` with `Handler b b a`?
+
+Maybe, but this would require us to pass in `b` as a type parameter. All previously written handlers would break. Asside from that issue, this seems like kind of a promising way to have servant's routing type be snaplet-aware.
+
+# `Handlers` branch
+
+The point of this branch is to replace both `RoutingApplication` and `Application` by `Handler b b ()`

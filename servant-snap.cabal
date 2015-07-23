@@ -54,6 +54,7 @@ library
       , either             >= 4.3  && < 4.5
       , http-types         >= 0.8  && < 0.9
       , network-uri        >= 2.6  && < 2.7
+      , MonadCatchIO-transformers
       , mtl                >= 2    && < 3
       , mmorph             >= 1
       , safe               >= 0.3  && < 0.4
@@ -81,6 +82,8 @@ executable greet
   default-language: Haskell2010
   build-depends:
       base
+    , either
+    , lens
     , servant
     , servant-snap
     , aeson

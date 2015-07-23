@@ -9,13 +9,15 @@ import qualified Data.ByteString.Char8  as B8
 import           Data.IORef
 import           Snap.Core
 import qualified Snap.Iteratee          as I
+import Snap.Snaplet
 
 import           Debug.Trace
 
 traceShow' a = traceShow a a
 
-type Application m = Request -> (Response -> m Response) -> m Response
+-- type Application m = Request -> (Response -> m Response) -> m Response
 
+--newtype SHandler b v a = SHandler { unsafeToHandler :: Handler b v a }
 
 -- snapToApplication :: MonadSnap m => Snap () -> Request -> (Response -> m Response) -> m Response
 -- snapToApplication snapAction req handler = do

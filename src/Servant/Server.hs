@@ -112,7 +112,7 @@ serve
   :: (HasServer layout, MonadSnap m)
   => Proxy layout
   -> Server layout m
-  -> (Request -> (Response -> m Response) -> m Response)
+  -> Application m
 serve p server = toApplication (runRouter (route p (return (RR (Right server)))))
 
 

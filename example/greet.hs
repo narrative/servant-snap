@@ -4,7 +4,10 @@
 {-# LANGUAGE PolyKinds         #-}
 {-# LANGUAGE TypeFamilies      #-}
 {-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE TemplateHaskell #-}
 
+import Control.Lens
+import Control.Monad.Trans.Either
 import           Data.Aeson
 import           Data.Monoid
 import           Data.Proxy
@@ -32,7 +35,15 @@ newtype Greet = Greet { _msg :: Text }
 instance FromJSON Greet
 instance ToJSON Greet
 
--- API specification
+data App = App { _heist :: Snaplet (Heist App)}
+makeLenses ''App
+
+app :: SnapletInit App App
+app = makeSnaplet "app" "example" Nothing $ do
+  h <- nestSnaplet "" heist $ heistInit "templates"
+  return $ App h
+
+-- API specification (pretend this is in a different package)
 type TestApi =
 
        -- GET /hello/:name?capital={true, false}  returns a Greet as JSON
@@ -46,15 +57,14 @@ type TestApi =
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
   -- :<|> Get '[JSON] Greet
 
-  :<|> "justreq" :> Get '[JSON] ()
+  -- :<|> "justreq" :> Get '[JSON] ()
 
-testApi :: Proxy TestApi
+testApi :: Proxy (TestApi)
 testApi = Proxy
 
-data App = App { _heist :: Snaplet (Heist App)}
 
-instance HasHeist App where
-  heistLens = subSnaplet heist
+--instance HasHeist App where
+--  heistLens = subSnaplet heist
 
 -- Server-side handlers.
 --
@@ -62,34 +72,35 @@ instance HasHeist App where
 -- that represents the API, are glued together using :<|>.
 --
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
-server :: MonadSnap m => Server TestApi m
-server = helloH :<|> postGreetH :<|> deleteGreetH  :<|> justReq
+server :: Server TestApi (Handler App App)
+server = helloH :<|> postGreetH :<|> deleteGreetH
 
   where helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
         --helloH name (Just False) = writeBS ("Hello, " <> name)
         helloH name (Just True) = return . Greet . toUpper $ "Hello, " <> name
 
+        --postGreetH :: Greet -> Server App Greet
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
         -- nodeal = return $ Greet "NoDeal"
-        justReq :: Handler App App Greet
-        justReq = return ()
         --justReq = cs $ mconcat (pathInfo req)
+
 
 -- Turn the server into a WAI app. 'serve' is provided by servant,
 -- more precisely by the Servant.Server module.
-test :: MonadSnap m => Application m
-test = traceShow "TESTING" $ serve testApi server
+test :: Handler App App ()
+test = serve testApi server
 
 -- Run the server.
 --
 -- 'run' comes from Network.Wai.Handler.Warp
 runTestServer :: Int -> IO ()
-runTestServer port = simpleHttpServe
-                     (setPort port mempty :: Config Snap ())
-                     (applicationToSnap test)
+runTestServer port = do
+  (_,s,_) <- runSnaplet Nothing app
+  simpleHttpServe (setPort port mempty :: Config Snap ())
+                     (applicationToSnap s)
 
 -- Put this all to work!
 main :: IO ()

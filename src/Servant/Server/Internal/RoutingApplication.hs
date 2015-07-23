@@ -6,8 +6,9 @@
 module Servant.Server.Internal.RoutingApplication where
 
 import           Blaze.ByteString.Builder.ByteString (fromLazyByteString)
-import           Control.Applicative                 (Applicative, (<$>))
-import Control.Monad (liftM)
+import           Control.Applicative
+import Control.Monad
+import Control.Monad.CatchIO
 import           Control.Monad.IO.Class              (MonadIO (..), liftIO)
 import           Control.Monad.Trans.Class           (lift)
 import           Control.Monad.Trans.Either          (EitherT, runEitherT)
@@ -50,7 +51,7 @@ type RoutingApplication m =
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
 newtype RouteResult a =
   RR { routeResult :: Either RouteMismatch a }
-  deriving (Eq, Show, Functor, Applicative)
+  deriving (Eq, Show, Functor, Applicative, Monad)
 
 -- | If we get a `Right`, it has precedence over everything else.
 --
@@ -62,6 +63,23 @@ instance Monoid (RouteResult a) where
   RR (Left x)  `mappend` RR (Left y)  = RR $ Left (x <> y)
   RR (Left _)  `mappend` RR (Right y) = RR $ Right y
   r            `mappend` _            = r
+
+-- instance Functor RouteResult where
+--   fmap f (RR (Right a)) = RR . Right $ f a
+--   fmap _ l = l
+--
+-- instance Applicative RouteResult where
+--   pure = RR . Right
+--   RR (Right f) <*> RR (Right a) = pure (f a)
+--   RR (Right f) <*> l            = l
+--   l            <*> _            = l
+
+instance Alternative RouteResult where
+  empty = RR $ Left NotFound
+  RR (Right a) <|> _            = RR (Right a)
+  _            <|> RR (Right b) = RR (Right b)
+  l            <|> _            = l
+
 
 -- Note that the ordering of the constructors has great significance! It
 -- determines the Ord instance and, consequently, the monoid instance.

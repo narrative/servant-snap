@@ -1,5 +1,7 @@
 module Servant.Server.Internal.Router where
 
+import           Control.Applicative
+import           Control.Monad
 import           Data.Map                                   (Map)
 import qualified Data.Map                                   as M
 import           Data.Monoid                                ((<>))
@@ -8,20 +10,21 @@ import           Data.Text                                  (Text)
 import           Servant.Server.Internal.PathInfo
 import           Servant.Server.Internal.RoutingApplication
 import           Snap.Core
+import           Snap.Snaplet
 
 import Debug.Trace
 
 -- | Internal representation of a router.
-data Router req app m =
-    WithRequest   (req -> Router req app m)
+data Router req app =
+    WithRequest   (req -> Router req app)
       -- ^ current request is passed to the router
-  | StaticRouter  (Map Text (Router req app m))
+  | StaticRouter  (Map Text (Router req app))
       -- ^ first path component used for lookup and removed afterwards
-  | DynamicRouter (Text -> Router req app m)
+  | DynamicRouter (Text -> Router req app)
       -- ^ first path component used for lookup and removed afterwards
-  | LeafRouter    (RoutingApplication m)
+  | LeafRouter    (Handler app app ())
       -- ^ to be used for routes that match an empty path
-  | Choice        (Router req app m) (Router req app m)
+  | Choice        (Router req app) (Router req app)
       -- ^ left-biased choice between two routers
 
 -- | Smart constructor for the choice between routers.
@@ -35,7 +38,7 @@ data Router req app m =
 --     passing the same request to both but ignoring it in the
 --     component that does not need it.
 --
-choice :: Router req app m -> Router req app m -> Router req app m
+choice :: Router req app -> Router req app -> Router req app
 choice (StaticRouter table1) (StaticRouter table2) =
   StaticRouter (M.unionWith choice table1 table2)
 choice (DynamicRouter fun1)  (DynamicRouter fun2)  =
@@ -49,26 +52,35 @@ choice router1 (WithRequest router2) =
 choice router1 router2 = Choice router1 router2
 
 -- | Interpret a router as an application.
-runRouter :: MonadSnap m => Router Request (RoutingApplication m) m -> RoutingApplication m
-runRouter (WithRequest router) request respond =
-  runRouter (router request) (traceStack (("WITHREQUEST req: "++) $ show request) request) respond
-runRouter (StaticRouter table) request respond =
+runRouter
+  :: Router Request (app)
+  -> RouteResult (Handler app app ())
+
+runRouter (WithRequest router) = do
+  --runRouter (router =<< getRequest)
+  undefined
+runRouter (StaticRouter table) = do
+  request <- getRequest
   case processedPathInfo request of
     first : _
       | Just router <- M.lookup first table
       -> let request' = reqSafeTail request
-         in  runRouter router request' respond
-    _ -> respond $ failWith NotFound
-runRouter (DynamicRouter fun)  request respond =
+         in  putRequest request' >> runRouter router
+    _ -> failWith NotFound
+runRouter (DynamicRouter fun) = do
+  request <- getRequest
   case processedPathInfo request of
     first : _
       -> let request' = reqSafeTail request
-         in  runRouter (fun first) request' respond
-    _ -> respond $ failWith NotFound
-runRouter (LeafRouter app)     request respond = app request respond
-runRouter (Choice r1 r2)       request respond =
-  runRouter r1 (traceShow (("CHOICE req: " ++) $ show request) request) $ \ mResponse1 ->
-    if isMismatch mResponse1
-      then runRouter r2 request $ \ mResponse2 ->
-             respond (mResponse1 <> mResponse2)
-      else respond mResponse1
+         in  putRequest request' >> runRouter (fun first)
+    _ -> failWith NotFound
+runRouter (LeafRouter a) = (RR . Right) a -- RR . Right $ app
+runRouter (Choice r1 r2) = undefined
+  -- runRouter r1 <|> runRouter r2
+  -- do
+  -- request <- getRequest
+  -- runRouter r1 $ \ mResponse1 ->
+  --   if isMismatch mResponse1
+  --     then runRouter r2 request $ \ mResponse2 ->
+  --            (mResponse1 <> mResponse2)
+  --     else mResponse1
