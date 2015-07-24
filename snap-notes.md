@@ -32,7 +32,7 @@
 I believe I need a function `snapServeApplication :: (Request -> (Respsonse -> IO Response) -> IO Response) -> Snap Response`
 This is proving to be a pain to write. The arguments to the `Application` function aren't easy to get at. I need to lift the callback in the second argument into the Snap monad.
 
-# Long convo with Alp and Anders
+# Long convo with Alp and Andres
 
 Discovered one of the main goals of Servant's design: make all a handler's dependencies explicit in the types. Makes a lot of sense in retrospect, but hadn't realized this, or the implications for handling in Snap's Handler monad, until now. Oops!
 
