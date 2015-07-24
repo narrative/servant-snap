@@ -62,9 +62,10 @@ import           Servant.Server.Internal.SnapShims
 class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
-  route :: MonadSnap m => Proxy layout -> m (RouteResult (Server layout m)) -> Router Request (RoutingApplication m) m
+  route :: Proxy layout -> Server layout b -> Router b
+  --route :: Proxy layout -> m (RouteResult (Server layout m)) -> Router Request (RoutingApplication m) m
 
-type Server layout m = ServerT layout (EitherT ServantErr m)
+type Server layout b = ServerT layout (EitherT ServantErr (Handler b b))
 
 -- * Instances
 
@@ -111,8 +112,8 @@ captured _ = fromText
 instance (KnownSymbol capture, FromText a, HasServer sublayout)
       => HasServer (Capture capture a :> sublayout) where
 
-  type ServerT (Capture capture a :> sublayout) m =
-     a -> ServerT sublayout m
+  type ServerT (Capture capture a :> sublayout) b =
+     a -> ServerT sublayout b
 
   route Proxy subserver =
     DynamicRouter $ \ first ->
@@ -123,10 +124,12 @@ instance (KnownSymbol capture, FromText a, HasServer sublayout)
     where captureProxy = Proxy :: Proxy (Capture capture a)
 
 
-methodRouter :: (AllCTRender ctypes a, MonadSnap m)
+methodRouter :: (AllCTRender ctypes a)
              => Method -> Proxy ctypes -> Status
-             -> m (RouteResult (EitherT ServantErr m a))
-             -> Router Request (RoutingApplication m) m
+             -> EitherT ServantErr (Handler b b) ()
+             -> Router b
+             -- -> m (RouteResult (EitherT ServantErr m a))
+             -- -> Router Request (RoutingApplication m) m
 methodRouter method proxy status action = LeafRouter route'
   where
     route' request respond
@@ -141,10 +144,12 @@ methodRouter method proxy status action = LeafRouter route'
           respond $ failWith WrongMethod
       | otherwise = respond $ failWith NotFound
 
-methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v, MonadSnap m)
+methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v)
                     => Method -> Proxy ctypes -> Status
-                    -> m (RouteResult (EitherT ServantErr m (Headers h v)))
-                    -> Router Request (RoutingApplication m) m
+                    -> EitherT ServantErr (Handler b v) ()
+                    -> Router b
+                    -- -> m (RouteResult (EitherT ServantErr m (Headers h v)))
+                    -- -> Router Request (RoutingApplication m) m
 methodRouterHeaders method proxy status action = LeafRouter route'
   where
     route' request respond
@@ -161,8 +166,10 @@ methodRouterHeaders method proxy status action = LeafRouter route'
       | otherwise = respond $ failWith NotFound
 
 methodRouterEmpty :: MonadSnap m => Method
-                  -> m (RouteResult (EitherT ServantErr m ()))
-                  -> Router Request (RoutingApplication m) m
+                  -> Handler b v ()
+                  -> Router b
+                  -- -> m (RouteResult (EitherT ServantErr m ()))
+                  -- -> Router Request (RoutingApplication m) m
 methodRouterEmpty method action = LeafRouter route'
   where
     route' request respond

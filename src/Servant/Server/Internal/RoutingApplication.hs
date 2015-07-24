@@ -7,8 +7,7 @@ module Servant.Server.Internal.RoutingApplication where
 
 import           Blaze.ByteString.Builder.ByteString (fromLazyByteString)
 import           Control.Applicative
-import Control.Monad
-import Control.Monad.CatchIO
+import           Control.Monad
 import           Control.Monad.IO.Class              (MonadIO (..), liftIO)
 import           Control.Monad.Trans.Class           (lift)
 import           Control.Monad.Trans.Either          (EitherT, runEitherT)
@@ -23,6 +22,7 @@ import           Data.Maybe                          (fromMaybe)
 import           Data.Monoid                         (Monoid, mappend, mempty,
                                                       (<>))
 import           Data.String                         (fromString)
+import           Data.Typeable
 import           GHC.Int                             (Int64)
 --import           Network.HTTP.Types                  hiding (Header,
 --                                                      ResponseHeaders)
@@ -40,14 +40,17 @@ import           Snap.Internal.Http.Types
 import           Snap.Internal.Iteratee.Debug        (iterateeDebugWrapper)
 import qualified Snap.Iteratee                       as I
 import Snap.Internal.Iteratee.Debug as ID
+import Snap.Snaplet
 
 import Debug.Trace
 
-type RoutingApplication m =
-     Request -- ^ the request, the field 'pathInfo' may be modified by url routing
-  -> (RouteResult Response -> m Response) -> m Response
+type RoutingHandler b v a = Handler b v (RouteResult a)
 
-
+-- type RoutingApplication m =
+--      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
+--   -> (RouteResult Response -> m Response) -> m Response
+--
+--
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
 newtype RouteResult a =
   RR { routeResult :: Either RouteMismatch a }
@@ -64,15 +67,6 @@ instance Monoid (RouteResult a) where
   RR (Left _)  `mappend` RR (Right y) = RR $ Right y
   r            `mappend` _            = r
 
--- instance Functor RouteResult where
---   fmap f (RR (Right a)) = RR . Right $ f a
---   fmap _ l = l
---
--- instance Applicative RouteResult where
---   pure = RR . Right
---   RR (Right f) <*> RR (Right a) = pure (f a)
---   RR (Right f) <*> l            = l
---   l            <*> _            = l
 
 instance Alternative RouteResult where
   empty = RR $ Left NotFound
@@ -89,7 +83,8 @@ data RouteMismatch =
   | UnsupportedMediaType -- ^ request body has unsupported media type
   | InvalidBody String -- ^ an even more informative "your json request body wasn't valid" error
   | HttpError Status (Maybe BL.ByteString)  -- ^ an even even more informative arbitrary HTTP response code error.
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Typeable, Show)
+
 
 instance Monoid RouteMismatch where
   mempty = NotFound
@@ -101,30 +96,30 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: (MonadSnap m) => RoutingApplication m
-              -> Request
-              -> (Response -> m Response)
-              -> m Response
-toApplication ra request respond = do
-  liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
-  r <- ra request (routingRespond . traceShow' . routeResult)
-  liftIO $ putStrLn $ "toApp response: " <> show r
-  return r
-
-   where
-     --routingRespond :: Either RouteMismatch Response -> IO Response
-     routingRespond (Left NotFound) =
-       respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
-     routingRespond (Left WrongMethod) =
-       respond . traceShow "RR NOTALLOWED" $ responseLBS methodNotAllowed405 [] "method not allowed"
-     routingRespond (Left (InvalidBody err)) =
-       respond . traceShow "RR INVALIDBODY" $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
-     routingRespond (Left UnsupportedMediaType) =
-       respond . traceShow "RR BADMIME" $ responseLBS unsupportedMediaType415 [] "unsupported media type"
-     routingRespond (Left (HttpError status body)) =
-       respond . traceShow "RR HTTP ERROR" $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
-     routingRespond (Right response) =
-       respond $ traceShow "RR SUCCESS" response
+-- toApplication :: (MonadSnap m) => RoutingApplication m
+--               -> Request
+--               -> (Response -> m Response)
+--               -> m Response
+-- toApplication ra request respond = do
+--   liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
+--   r <- ra request (routingRespond . routeResult)
+--   liftIO $ putStrLn $ "toApp response: " <> show r
+--   return r
+--
+--    where
+--      --routingRespond :: Either RouteMismatch Response -> IO Response
+--      routingRespond (Left NotFound) =
+--        respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
+--      routingRespond (Left WrongMethod) =
+--        respond . traceShow "RR NOTALLOWED" $ responseLBS methodNotAllowed405 [] "method not allowed"
+--      routingRespond (Left (InvalidBody err)) =
+--        respond . traceShow "RR INVALIDBODY" $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
+--      routingRespond (Left UnsupportedMediaType) =
+--        respond . traceShow "RR BADMIME" $ responseLBS unsupportedMediaType415 [] "unsupported media type"
+--      routingRespond (Left (HttpError status body)) =
+--        respond . traceShow "RR HTTP ERROR" $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
+--      routingRespond (Right response) =
+--        respond $ traceShow "RR SUCCESS" response
 
 
 responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response
@@ -133,6 +128,12 @@ responseLBS (Status code msg) hs body =
     . (\r -> L.foldl' (\r' (h,h') -> addHeader h h' r') r hs)
     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
     $ emptyResponse
+
+runRouteResult :: EitherT ServantErr (Handler b b) a -> Handler b b a
+runRouteResult action = do
+  ea <- runEitherT action
+  case ea of
+    Left err -> respond $
 
 runAction :: MonadSnap m => m (RouteResult (EitherT ServantErr m a))
           -> (RouteResult Response -> m r)

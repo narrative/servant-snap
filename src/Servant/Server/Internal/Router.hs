@@ -15,16 +15,16 @@ import           Snap.Snaplet
 import Debug.Trace
 
 -- | Internal representation of a router.
-data Router req app =
-    WithRequest   (req -> Router req app)
+data Router b =
+    WithRequest   (Request -> Router b)
       -- ^ current request is passed to the router
-  | StaticRouter  (Map Text (Router req app))
+  | StaticRouter  (Map Text (Router b))
       -- ^ first path component used for lookup and removed afterwards
-  | DynamicRouter (Text -> Router req app)
+  | DynamicRouter (Text -> Router b)
       -- ^ first path component used for lookup and removed afterwards
-  | LeafRouter    (Handler app app ())
+  | LeafRouter    (Handler b b ())
       -- ^ to be used for routes that match an empty path
-  | Choice        (Router req app) (Router req app)
+  | Choice        (Router b) (Router b)
       -- ^ left-biased choice between two routers
 
 -- | Smart constructor for the choice between routers.
@@ -38,7 +38,7 @@ data Router req app =
 --     passing the same request to both but ignoring it in the
 --     component that does not need it.
 --
-choice :: Router req app -> Router req app -> Router req app
+choice :: Router b -> Router b -> Router b
 choice (StaticRouter table1) (StaticRouter table2) =
   StaticRouter (M.unionWith choice table1 table2)
 choice (DynamicRouter fun1)  (DynamicRouter fun2)  =
@@ -53,12 +53,11 @@ choice router1 router2 = Choice router1 router2
 
 -- | Interpret a router as an application.
 runRouter
-  :: Router Request (app)
-  -> RouteResult (Handler app app ())
+  :: Router b
+  -> Handler b b (RouteResult ())
 
-runRouter (WithRequest router) = do
-  --runRouter (router =<< getRequest)
-  undefined
+runRouter (WithRequest fRouter) = do
+  getRequest >>= \r -> runRouter (fRouter r)
 runRouter (StaticRouter table) = do
   request <- getRequest
   case processedPathInfo request of
@@ -66,17 +65,17 @@ runRouter (StaticRouter table) = do
       | Just router <- M.lookup first table
       -> let request' = reqSafeTail request
          in  putRequest request' >> runRouter router
-    _ -> failWith NotFound
+    _ -> return $ failWith NotFound
 runRouter (DynamicRouter fun) = do
   request <- getRequest
   case processedPathInfo request of
     first : _
       -> let request' = reqSafeTail request
          in  putRequest request' >> runRouter (fun first)
-    _ -> failWith NotFound
-runRouter (LeafRouter a) = (RR . Right) a -- RR . Right $ app
-runRouter (Choice r1 r2) = undefined
-  -- runRouter r1 <|> runRouter r2
+    _ -> return $ failWith NotFound
+runRouter (LeafRouter h) = fmap (succeedWith) h -- RR . Right $ app
+runRouter (Choice r1 r2) =
+  runRouter r1 <|> runRouter r2
   -- do
   -- request <- getRequest
   -- runRouter r1 $ \ mResponse1 ->
