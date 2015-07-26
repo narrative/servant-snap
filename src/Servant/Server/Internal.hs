@@ -60,7 +60,6 @@ class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
   route :: Proxy layout -> Server layout b -> Router b
-  --route :: Proxy layout -> m (RouteResult (Server layout m)) -> Router Request (RoutingApplication m) m
 
 type Server layout b = ServerT layout (Handler b b)
 
