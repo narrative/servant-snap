@@ -22,7 +22,7 @@ data Router b =
       -- ^ first path component used for lookup and removed afterwards
   | DynamicRouter (Text -> Router b)
       -- ^ first path component used for lookup and removed afterwards
-  | LeafRouter    (Handler b b ())
+  | LeafRouter    (Handler b b (RouteResult ()))
       -- ^ to be used for routes that match an empty path
   | Choice        (Router b) (Router b)
       -- ^ left-biased choice between two routers
@@ -65,21 +65,14 @@ runRouter (StaticRouter table) = do
       | Just router <- M.lookup first table
       -> let request' = reqSafeTail request
          in  putRequest request' >> runRouter router
-    _ -> return $ failWith NotFound
+    _ -> pass
 runRouter (DynamicRouter fun) = do
   request <- getRequest
   case processedPathInfo request of
     first : _
       -> let request' = reqSafeTail request
          in  putRequest request' >> runRouter (fun first)
-    _ -> return $ failWith NotFound
-runRouter (LeafRouter h) = fmap (succeedWith) h -- RR . Right $ app
+    _ -> pass
+runRouter (LeafRouter h) = h
 runRouter (Choice r1 r2) =
   runRouter r1 <|> runRouter r2
-  -- do
-  -- request <- getRequest
-  -- runRouter r1 $ \ mResponse1 ->
-  --   if isMismatch mResponse1
-  --     then runRouter r2 request $ \ mResponse2 ->
-  --            (mResponse1 <> mResponse2)
-  --     else mResponse1

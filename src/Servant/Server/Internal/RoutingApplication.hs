@@ -24,14 +24,6 @@ import           Data.Monoid                         (Monoid, mappend, mempty,
 import           Data.String                         (fromString)
 import           Data.Typeable
 import           GHC.Int                             (Int64)
---import           Network.HTTP.Types                  hiding (Header,
---                                                      ResponseHeaders)
--- import qualified Network.Wai                         as Wai (Application,
---                                                              Request, Response,
---                                                              ResponseReceived,
---                                                              requestBody,
---                                                              responseLBS,
---                                                              strictRequestBody)
 import           Servant.API                         ((:<|>) (..))
 import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
@@ -44,13 +36,6 @@ import Snap.Snaplet
 
 import Debug.Trace
 
-type RoutingHandler b v a = Handler b v (RouteResult a)
-
--- type RoutingApplication m =
---      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
---   -> (RouteResult Response -> m Response) -> m Response
---
---
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
 newtype RouteResult a =
   RR { routeResult :: Either RouteMismatch a }
@@ -95,6 +80,10 @@ instance Monoid RouteMismatch where
   -- arbitrary'" -- William Burroughs
   mappend = max
 
+toHandler :: Handler app app (RouteResult a) -> Handler app app a
+toHandler h = do
+  rr <- h
+  either (const pass) return (routeResult rr)
 
 -- toApplication :: (MonadSnap m) => RoutingApplication m
 --               -> Request
@@ -129,16 +118,15 @@ responseLBS (Status code msg) hs body =
     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
     $ emptyResponse
 
-runRouteResult :: EitherT ServantErr (Handler b b) a -> Handler b b a
-runRouteResult action = do
-  ea <- runEitherT action
-  case ea of
-    Left err -> respond $
+runAction' :: Snap (RouteResult (EitherT ServantErr Snap a))
+           -> (a -> RouteResult a)
+           -> Snap (RouteResult a)
+runAction' = undefined
 
-runAction :: MonadSnap m => m (RouteResult (EitherT ServantErr m a))
-          -> (RouteResult Response -> m r)
+runAction :: Snap (RouteResult (EitherT ServantErr Snap a))
+          -> (RouteResult Response -> Snap r)
           -> (a -> RouteResult Response)
-          -> m r
+          -> Snap r
 runAction action respond k = do
   r <- action
   go r
@@ -150,8 +138,10 @@ runAction action respond k = do
         Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
-feedTo :: MonadSnap m => m (RouteResult (a -> b)) -> a -> m (RouteResult b)
-feedTo f x = (($ x) <$>) <$> f
+feedTo :: Handler app app (a -> b) -> a -> Handler app app b
+feedTo h x = do
+  f <- h
+  return $ f x
 
 extractL :: RouteResult (a :<|> b) -> RouteResult a
 extractL (RR (Right (a :<|> _))) = RR (Right a)
