@@ -34,9 +34,6 @@ import           Data.Typeable
 import           GHC.TypeLits                (KnownSymbol, symbolVal)
 import           Network.HTTP.Types          (QueryText, parseQueryText)
 import Network.Wai (rawQueryString) --TODO temporary
---import           Network.Wai                 (Application, lazyRequestBody,
---                                              rawQueryString, requestHeaders,
---                                              requestMethod, responseLBS)
 import           Snap.Core                   hiding (Headers, getHeaders,
                                               getResponse, route)
 import           Snap.Snaplet
@@ -642,7 +639,8 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- > server = serveDirectory "/var/www/images"
 instance HasServer Raw where
 
-  type ServerT Raw m = Request -> (Response -> Snap Response) -> Snap Response
+  --type ServerT Raw m = Request -> (Response -> Snap Response) -> Snap Response
+  type ServerT Raw m = m ()
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
