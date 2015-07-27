@@ -36,6 +36,8 @@ import Snap.Snaplet
 
 import Debug.Trace
 
+type RoutingSnapApp b a = Handler b b (RouteResult a)
+
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
 newtype RouteResult a =
   RR { routeResult :: Either RouteMismatch a }
@@ -138,10 +140,12 @@ runAction action respond k = do
         Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
-feedTo :: Handler app app (a -> b) -> a -> Handler app app b
+feedTo :: Snap (RouteResult (a -> b)) -> a -> Snap (RouteResult b)
 feedTo h x = do
-  f <- h
-  return $ f x
+  ef <- h
+  case routeResult ef of
+    Left _ -> pass
+    Right f -> return $ succeedWith $ f x
 
 extractL :: RouteResult (a :<|> b) -> RouteResult a
 extractL (RR (Right (a :<|> _))) = RR (Right a)

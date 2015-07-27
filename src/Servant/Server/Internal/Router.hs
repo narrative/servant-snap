@@ -15,16 +15,16 @@ import           Snap.Snaplet
 import Debug.Trace
 
 -- | Internal representation of a router.
-data Router b =
-    WithRequest   (Request -> Router b)
+data Router m =
+    WithRequest   (Request -> Router m)
       -- ^ current request is passed to the router
-  | StaticRouter  (Map Text (Router b))
+  | StaticRouter  (Map Text (Router m))
       -- ^ first path component used for lookup and removed afterwards
-  | DynamicRouter (Text -> Router b)
+  | DynamicRouter (Text -> Router m)
       -- ^ first path component used for lookup and removed afterwards
-  | LeafRouter    (Handler b b (RouteResult ()))
+  | LeafRouter    (m (RouteResult ()))
       -- ^ to be used for routes that match an empty path
-  | Choice        (Router b) (Router b)
+  | Choice        (Router m) (Router m)
       -- ^ left-biased choice between two routers
 
 -- | Smart constructor for the choice between routers.
@@ -53,7 +53,7 @@ choice router1 router2 = Choice router1 router2
 
 -- | Interpret a router as an application.
 runRouter
-  :: Router b
+  :: Router (Handler b b)
   -> Handler b b (RouteResult ())
 
 runRouter (WithRequest fRouter) = do

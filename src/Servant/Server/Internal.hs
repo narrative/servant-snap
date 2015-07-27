@@ -59,9 +59,9 @@ import           Servant.Server.Internal.SnapShims
 class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
-  route :: Proxy layout -> Server layout b -> Router b
+  route :: Proxy layout -> Snap (RouteResult (Server layout m)) -> Router m
 
-type Server layout b = ServerT layout (Handler b b)
+type Server layout m = ServerT layout m
 
 -- * Instances
 
@@ -120,10 +120,10 @@ instance (KnownSymbol capture, FromText a, HasServer sublayout)
     where captureProxy = Proxy :: Proxy (Capture capture a)
 
 
-methodRouter :: (AllCTRender ctypes a)
+methodRouter :: (AllCTRender ctypes a, MonadSnap m)
              => Method -> Proxy ctypes -> Status
              -> Snap (RouteResult (EitherT ServantErr Snap a))
-             -> Router b
+             -> Router m
              -- -> m (RouteResult (EitherT ServantErr m a))
              -- -> Router Request (RoutingApplication m) m
 methodRouter method proxy status action =
@@ -147,41 +147,53 @@ methodRouter method proxy status action =
           pass -- respond $ failWith WrongMethod
         _ -> pass -- respond $ failWith NotFound
 
-methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v)
+methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v, MonadSnap m)
                     => Method -> Proxy ctypes -> Status
                     -> Snap (RouteResult (EitherT ServantErr Snap (Headers h v)))
-                    -> Router b
+                    -> Router m
                     -- -> m (RouteResult (EitherT ServantErr m (Headers h v)))
                     -- -> Router Request (RoutingApplication m) m
-methodRouterHeaders method proxy status action = LeafRouter route'
+methodRouterHeaders method proxy status action =
+  LeafRouter $ liftSnap $ do
+    resp <- route'
+    either (const pass) putResponse (routeResult resp)
+    return (RR (Right ()))
   where
-    route' request respond
-      | pathIsEmpty request && rqMethod request == method = do
-        runAction action respond $ \ output -> do
+    route' = do
+      request <- getRequest
+      case (pathIsEmpty request,  rqMethod request == method) of
+       (True,True) -> do
+        runAction action return $ \ output -> do
           let accH = fromMaybe ct_wildcard $ getHeader (mk "Accept") request
               headers = getHeaders output
           case handleAcceptH proxy (AcceptHeader accH) (getResponse output) of
             Nothing -> failWith UnsupportedMediaType
             Just (contentT, body) -> succeedWith $
               responseLBS status ( ("Content-Type" , cs contentT) : headers) body
-      | pathIsEmpty request && rqMethod request /= method =
-          respond $ failWith WrongMethod
-      | otherwise = respond $ failWith NotFound
+       (True,False) -> do
+          pass -- respond $ failWith WrongMethod
+       _  ->  pass -- respond $ failWith NotFound
 
 methodRouterEmpty :: Method
-                  -> Handler b v ()
-                  -> Router b
+                  -> Snap (RouteResult (EitherT ServantErr Snap ()))
+                  -> Router (Handler b v)
                   -- -> m (RouteResult (EitherT ServantErr m ()))
                   -- -> Router Request (RoutingApplication m) m
-methodRouterEmpty method action = LeafRouter route'
+methodRouterEmpty method action =
+  LeafRouter $ liftSnap $ do
+    resp <- route'
+    either (const pass) putResponse (routeResult resp)
+    return (RR (Right ()))
   where
-    route' request respond
-      | pathIsEmpty request && rqMethod request == method = do
-          runAction action respond $ \ () ->
+    route' = do
+      request <- getRequest
+      case (pathIsEmpty request, rqMethod request == method) of
+       (True, True) -> do
+          runAction action return $ \ () ->
             succeedWith $ responseLBS noContent204 [] ""
-      | pathIsEmpty request && rqMethod request /= method =
-          respond $ failWith WrongMethod
-      | otherwise = respond $ failWith NotFound
+       (True,False) ->
+          pass --respond $ failWith WrongMethod
+       _ -> pass --respond $ failWith NotFound
 
 -- | If you have a 'Delete' endpoint in your API,
 -- the handler for this endpoint is meant to delete
