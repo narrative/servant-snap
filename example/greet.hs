@@ -40,7 +40,7 @@ instance FromJSON Greet
 instance ToJSON Greet
 
 -- API specification
-type TestApi m =
+type TestApi =
 
   -- GET /hello/:name?capital={true, false}  returns a Greet as JSON
   "hello" :> Capture "name" Text :> QueryParam "capital" Bool :> Get '[JSON] Greet
@@ -69,7 +69,7 @@ makeLenses ''App
 
 type AppHandler = Handler App App
 
-testApi :: Proxy (TestApi AppHandler)
+testApi :: Proxy (TestApi )
 testApi = Proxy
 
 -- Server-side handlers.
@@ -80,7 +80,7 @@ testApi = Proxy
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
 
 
-server :: Server (TestApi AppHandler) AppHandler
+server :: Server (TestApi ) AppHandler
 server = helloH :<|> helloH' :<|> postGreetH :<|> deleteGreetH
          :<|> serveDirectory "static" :<|> doRaw
 
