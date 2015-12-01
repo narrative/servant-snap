@@ -55,8 +55,8 @@ type TestApi m =
   -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
 
-  :<|> "files" :> Raw m (m ())
-  :<|> "doraw" :> Raw m (m ())
+  :<|> "files" :> Raw
+  :<|> "doraw" :> Raw
 
 
 
@@ -100,7 +100,7 @@ server = helloH :<|> helloH' :<|> postGreetH :<|> deleteGreetH
 
         deleteGreetH _ = return ()
 
-        doRaw :: Server (Raw (Handler App App) (Handler App App ())) (Handler App App)
+        doRaw :: Server Raw (Handler App App)
         doRaw = with auth $ do
           u <- currentUser
           let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)

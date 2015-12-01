@@ -497,11 +497,11 @@ instance (KnownSymbol sym, HasServer sublayout)
                     | otherwise = False
 
 
-class ToRawApplication m a where
-  toRawApplication :: a -> Application m
+-- class ToRawApplication m a where
+--   toRawApplication :: a -> Application m
 
-instance (MonadSnap m, a ~ m ()) => ToRawApplication m a where
-   toRawApplication app = snapToApplication app
+-- instance (MonadSnap m, a ~ m ()) => ToRawApplication m a where
+--    toRawApplication app = snapToApplication app
 
 
 -- | Just pass the request to the underlying application and serve its response.
@@ -515,18 +515,18 @@ instance (MonadSnap m, a ~ m ()) => ToRawApplication m a where
 --instance (ToRawApplication a, MonadSnap m) => HasServer (Raw m a) where
 --instance ToRawApplication a => HasServer (Raw m a) where
 --instance forall m a n.(MonadSnap m, m ~ n) => HasServer (Raw m (n a)) where
-instance (ToRawApplication m a, a ~ m ()) => HasServer (Raw m a) where
+instance HasServer Raw where
 --instance ToRawApplication a => HasServer (Raw m a) where
 
   --type ServerT (Raw n a) m = Raw n (Application m)
-  type ServerT (Raw m a) n = n ()
+  type ServerT Raw n = n ()
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
     r <- rawApplication
     case r of
       RR (Left err)      -> respond $ failWith err
-      RR (Right rawApp) -> (toRawApplication rawApp) request (respond . succeedWith)
+      RR (Right rawApp) -> (snapToApplication rawApp) request (respond . succeedWith)
 
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
