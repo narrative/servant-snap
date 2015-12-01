@@ -43,6 +43,7 @@ spec = describe "module Servant.Server.Enter"
 
 type ReaderAPI = "int"    :> Get '[JSON] Int
             :<|> "string" :> Post '[JSON] String
+            :<|> "doraw"  :> Raw
 
 type IdentityAPI = "bool" :> Get '[JSON] Bool
 
@@ -55,7 +56,7 @@ combinedAPI :: Proxy CombinedAPI
 combinedAPI = Proxy
 
 readerServer' :: ServerT ReaderAPI (Reader String)
-readerServer' = return 1797 :<|> ask
+readerServer' = return 1797 :<|> ask  :<|> return ()
 
 fReader :: Reader String :~> AppHandler
 fReader = generalizeNat C.. runReaderTNat "hi"
